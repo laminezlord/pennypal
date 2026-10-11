@@ -1,0 +1,29 @@
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "pennypal-ec854",
+          "appId": "1:806711585831:android:25040f5bf3953640a8b202",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "pennypal-ec854",
+          "configurations": {
+            "android": "1:806711585831:android:25040f5bf3953640a8b202",
+            "web": "1:806711585831:web:54572f93e91693eda8b202"
+          }
+        }
+      }
+    }
+  },
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
+  "storage": {
+    "rules": "storage.rules"
+  }
+}

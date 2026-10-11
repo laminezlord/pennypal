@@ -1,0 +1,21 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function signedIn() { return request.auth != null; }
+    function admin() {
+      return signedIn() &&
+        (get(/databases/(default)/documents/Users/$(request.auth.uid)).data.Role == 'admin' ||
+         get(/databases/(default)/documents/Users/$(request.auth.uid)).data.role == 'admin');
+    }
+
+    match /receipts/{uid}/{fileName} {
+      allow read, write: if signedIn() && request.auth.uid == uid;
+    }
+
+    match /learning_videos/{uid}/{fileName} {
+      allow read: if signedIn();
+      allow write: if admin() && request.auth.uid == uid;
+      allow delete: if admin() && request.auth.uid == uid;
+    }
+  }
+}

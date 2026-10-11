@@ -1,0 +1,62 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function owner(uid) { return signedIn() && request.auth.uid == uid; }
+    function admin() {
+      return signedIn() &&
+        (get(/databases/$(database)/documents/Users/$(request.auth.uid)).data.Role == 'admin' ||
+         get(/databases/$(database)/documents/Users/$(request.auth.uid)).data.role == 'admin');
+    }
+
+    match /Users/{uid} {
+      allow create: if owner(uid) && request.resource.data.UserId == uid && request.resource.data.Role == 'student';
+      allow read: if owner(uid) || admin();
+      allow update: if admin() || (owner(uid) && request.resource.data.UserId == resource.data.UserId && request.resource.data.Role == resource.data.Role);
+      allow delete: if admin();
+    }
+    match /UserProfiles/{uid} {
+      allow read, write: if owner(uid) || admin();
+    }
+    match /Transactions/{id} {
+      allow create: if signedIn() && request.resource.data.UserId == request.auth.uid;
+      allow read, update, delete: if signedIn() && resource.data.UserId == request.auth.uid || admin();
+    }
+    match /Budgets/{id} {
+      allow create: if signedIn() && request.resource.data.UserId == request.auth.uid;
+      allow read, update, delete: if signedIn() && resource.data.UserId == request.auth.uid || admin();
+    }
+    match /SavingsGoals/{id} {
+      allow create: if signedIn() && request.resource.data.UserId == request.auth.uid;
+      allow read, update, delete: if signedIn() && resource.data.UserId == request.auth.uid || admin();
+    }
+    match /LearningContent/{id} {
+      allow read: if signedIn();
+      allow write: if admin();
+    }
+    match /Notifications/{id} {
+      allow read, update: if signedIn() && resource.data.UserId == request.auth.uid || admin();
+      allow create: if admin();
+      allow delete: if admin();
+    }
+    match /SupportQueries/{id} {
+      allow create: if signedIn() && request.resource.data.UserId == request.auth.uid;
+      allow read, update: if signedIn() && resource.data.UserId == request.auth.uid || admin();
+      allow delete: if admin();
+    }
+    match /Feedback/{id} {
+      allow create: if signedIn() && request.resource.data.UserId == request.auth.uid;
+      allow read: if signedIn() && resource.data.UserId == request.auth.uid || admin();
+      allow delete: if admin();
+    }
+    match /Reports/{id} {
+      allow read: if signedIn() && resource.data.UserId == request.auth.uid || admin();
+      allow write: if admin();
+    }
+    match /Categories/{id} {
+      allow read: if signedIn();
+      allow write: if admin();
+    }
+  }
+}
