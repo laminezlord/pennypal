@@ -224,7 +224,7 @@ class _LandingBackdropState extends State<_LandingBackdrop> with SingleTickerPro
                       height: 320,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: PennyPalTheme.mint.withOpacity(.035 + (.012 * (1 - t))),
+                        color: PennyPalTheme.mint.withValues(alpha: .035 + (.012 * (1 - t))),
                       ),
                     ),
                   ),
@@ -292,7 +292,7 @@ class _BubbleFieldState extends State<_BubbleField> with SingleTickerProviderSta
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         border: Border.all(color: PennyPalTheme.sky, width: 1.2),
-                        color: Colors.white.withOpacity(.30),
+                        color: Colors.white.withValues(alpha: .30),
                       ),
                     ),
                   ),

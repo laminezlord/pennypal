@@ -6,7 +6,9 @@ import '../../services/pennypal_service.dart';
 import '../../widgets/penny_widgets.dart';
 
 class LearningScreen extends StatefulWidget {
-  const LearningScreen({super.key});
+  /// Changes whenever the Learn tab is opened so admin-published lessons appear.
+  final int refreshSignal;
+  const LearningScreen({super.key, this.refreshSignal = 0});
   @override
   State<LearningScreen> createState() => _LearningScreenState();
 }
@@ -20,6 +22,12 @@ class _LearningScreenState extends State<LearningScreen> {
   void initState() {
     super.initState();
     load();
+  }
+
+  @override
+  void didUpdateWidget(LearningScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.refreshSignal > 0 && widget.refreshSignal != oldWidget.refreshSignal) load();
   }
 
   Future<void> load() async {
@@ -61,7 +69,11 @@ class _LearningScreenState extends State<LearningScreen> {
             if (loading)
               const LoadingCard()
             else if (list.isEmpty)
-              const EmptyState(icon: Icons.menu_book_outlined, title: 'No lessons found', message: 'Try a different topic.'),
+              EmptyState(
+                icon: Icons.menu_book_outlined,
+                title: 'No lessons found',
+                message: query.trim().isEmpty ? 'Lessons could not be loaded. Pull down to try again.' : 'Try a different topic.',
+              ),
             ...list.asMap().entries.map(
               (e) => Padding(
                 padding: const EdgeInsets.only(bottom: 10),

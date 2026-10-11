@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:intl/intl.dart';
 import '../app.dart';
 
@@ -141,7 +142,17 @@ class LoadingCard extends StatelessWidget {
 
 final NumberFormat _moneyFormat = NumberFormat('#,##0.00');
 
-String money(num value) => '₦${_moneyFormat.format(value)}';
+String money(num value) => value < 0 ? '-₦${_moneyFormat.format(value.abs())}' : '₦${_moneyFormat.format(value)}';
+
+/// Runs [callback] after the current frame and makes sure that frame happens.
+///
+/// A bare addPostFrameCallback waits for the next frame, and an idle Flutter
+/// web app does not draw one until the user interacts again. That left lists
+/// visibly stale after saving, editing or deleting records.
+void afterNextFrame(FrameCallback callback) {
+  WidgetsBinding.instance.addPostFrameCallback(callback);
+  WidgetsBinding.instance.scheduleFrame();
+}
 
 /// Reusable entrance motion for PennyPal's content screens.
 /// Keeps movement subtle and consistent: fade + upward lift + tiny scale.

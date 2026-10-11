@@ -42,6 +42,16 @@ Important safety and product rules:
     _chat = null;
   }
 
+  static String _describeCategories(dynamic value) {
+    if (value is! Map || value.isEmpty) return 'none recorded';
+    return value.entries.map((e) => '${e.key} ${e.value}').join(', ');
+  }
+
+  static String _describeGoals(dynamic value) {
+    if (value is! List || value.isEmpty) return 'none';
+    return value.join('; ');
+  }
+
   static Future<String> ask({
     required String question,
     Map<String, dynamic>? financialContext,
@@ -60,9 +70,12 @@ PennyPal context (use only when relevant):
 - Budget used: ${context['budget_percent'] ?? 0}%
 - Remaining budget: ${context['budget_remaining'] ?? 0}
 - Pending offline transactions: ${context['pending_sync_count'] ?? 0}
+- This month's expenses by category: ${_describeCategories(context['month_by_category'])}
+- Active savings goals: ${_describeGoals(context['goals'])}
 
-Answer as PennyPal Assistant. If the question does not require the context, do not
-force these figures into the answer.
+Answer as PennyPal Assistant in plain text without Markdown symbols such as * or #.
+App sections are named Overview, Activity, Budget, Goals, Learn and Reports.
+If the question does not require the context, do not force these figures into the answer.
 ''';
 
     _chat ??= _model.startChat(maxTurns: 20);

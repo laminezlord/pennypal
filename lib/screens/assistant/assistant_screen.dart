@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../app.dart';
 import '../../services/pennypal_service.dart';
+import '../../widgets/penny_widgets.dart';
 
 class AssistantScreen extends StatefulWidget {
   const AssistantScreen({super.key});
@@ -156,7 +157,7 @@ class _AssistantScreenState extends State<AssistantScreen> {
           'model': '${result['model'] ?? ''}',
         });
       });
-      WidgetsBinding.instance.addPostFrameCallback((_) {
+      afterNextFrame((_) {
         if (scroll.hasClients) {
           scroll.animateTo(
             scroll.position.maxScrollExtent,

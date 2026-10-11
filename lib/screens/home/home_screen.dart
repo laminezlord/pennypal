@@ -8,6 +8,7 @@ import '../admin_screen.dart';
 import '../budget/budget_screen.dart';
 import '../learning/learning_screen.dart';
 import '../profile/profile_screen.dart';
+import '../reports_screen.dart';
 import '../savings/savings_screen.dart';
 import '../transactions/transactions_screen.dart';
 
@@ -21,14 +22,20 @@ class _HomeScreenState extends State<HomeScreen> {
   bool isAdmin = false;
   List<Widget> get _screens => [
     DashboardView(data: dash, loading: loading, onRefresh: _loadDashboard, onNavigate: _nav),
-    const TransactionsScreen(),
-    const BudgetScreen(),
-    const SavingsScreen(),
-    isAdmin ? const AdminScreen() : const LearningScreen(),
+    // Only the visible tab gets a non-zero signal, so switching tabs reloads
+    // just the page being opened.
+    TransactionsScreen(refreshSignal: tab == 1 ? _refreshSignal : 0),
+    BudgetScreen(refreshSignal: tab == 2 ? _refreshSignal : 0),
+    SavingsScreen(refreshSignal: tab == 3 ? _refreshSignal : 0),
+    isAdmin ? const AdminScreen() : LearningScreen(refreshSignal: tab == 4 ? _refreshSignal : 0),
   ];
   Map<String, dynamic> dash = PennyPalService.emptyDashboard();
-  bool loading = false;
+  bool loading = true;
   bool _dashboardBusy = false;
+  // Bumped whenever the user switches tabs. The tab pages stay mounted inside
+  // the IndexedStack, so they use this to reload instead of showing data from
+  // when they were first opened.
+  int _refreshSignal = 0;
 
   @override
   void initState() {
@@ -36,7 +43,7 @@ class _HomeScreenState extends State<HomeScreen> {
     // Load immediately when the dashboard is first mounted. Previously this
     // was only reached after a manual refresh, leaving the summary tiles in a
     // loading state until the user pulled to refresh.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    afterNextFrame((_) {
       if (mounted) {
         _loadDashboard();
         _loadRole();
@@ -59,9 +66,11 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       // Render the dashboard from cache/local state first. Never make the
       // first frame wait for a sync or notification operation.
+      // On a slow connection keep the figures already on screen rather than
+      // flashing zeros that look like lost data.
       final d = await PennyPalService.dashboard().timeout(
-        const Duration(seconds: 3),
-        onTimeout: () => PennyPalService.emptyDashboard(),
+        const Duration(seconds: 12),
+        onTimeout: () => dash,
       );
       if (mounted) {
         setState(() {
@@ -84,7 +93,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _nav(int i) {
     if (i == tab) return;
-    setState(() => tab = i);
+    setState(() {
+      tab = i;
+      _refreshSignal++;
+    });
+    if (i == 0) _loadDashboard();
   }
 
 
@@ -101,7 +114,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!mounted) return;
     final message = result['message'] as String?;
     if (message != null && message.isNotEmpty) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
+      afterNextFrame((_) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
       });
@@ -212,12 +225,29 @@ class DashboardView extends StatelessWidget {
             Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text('Spent ${money(monthExpenses)}', style: const TextStyle(color: PennyPalTheme.muted, fontSize: 12, fontWeight: FontWeight.w700)), Text(budget > 0 ? 'Left ${money((budget - monthExpenses).clamp(0, double.infinity))}' : 'No limit yet', style: const TextStyle(color: PennyPalTheme.muted, fontSize: 12, fontWeight: FontWeight.w700))]),
           ]))),
           const SizedBox(height: 22),
+          if (!loading && income == 0 && expenses == 0 && budget == 0) ...[
+            const AppCard(child: Row(children: [
+              Icon(Icons.lightbulb_outline_rounded, color: PennyPalTheme.sky),
+              SizedBox(width: 12),
+              Expanded(child: Text('No income, expenses or budget yet. Add your first income, record an expense, then set a monthly budget to see your progress here.', style: TextStyle(height: 1.4, fontWeight: FontWeight.w600))),
+            ])),
+            const SizedBox(height: 14),
+          ],
           const SectionTitle('Quick actions'), const SizedBox(height: 10),
-          GridView.count(shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), crossAxisCount: wide ? 4 : 2, crossAxisSpacing: 12, mainAxisSpacing: 12, childAspectRatio: wide ? 2.2 : 1.7, children: [
+          // Links required by the SRS dashboard section: Add Income, Add
+          // Expense, Budget, Transaction History, Learning, Feedback and
+          // Contact Support, plus the assistant and goals.
+          GridView(shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: wide ? 5 : 2, crossAxisSpacing: 10, mainAxisSpacing: 10, mainAxisExtent: 68), children: [
             _ActionTile('Add expense', Icons.remove_circle_outline, PennyPalTheme.sky, () => _openQuickAddFromDashboard(context, onRefresh)),
             _ActionTile('Add income', Icons.add_circle_outline, PennyPalTheme.mint, () => _openQuickAddFromDashboard(context, onRefresh, income: true)),
-            _ActionTile('Ask PennyPal', Icons.auto_awesome, PennyPalTheme.navy, () => Navigator.of(context).push(pennyPalRoute(const AssistantScreen()))),
+            _ActionTile('Budget', Icons.track_changes_outlined, PennyPalTheme.navy, () => onNavigate(2)),
+            _ActionTile('History', Icons.receipt_long_outlined, PennyPalTheme.sky, () => onNavigate(1)),
             _ActionTile('My goals', Icons.flag_outlined, PennyPalTheme.amber, () => onNavigate(3)),
+            _ActionTile('Learning', Icons.school_outlined, PennyPalTheme.mint, () => Navigator.of(context).push(pennyPalRoute(const LearningScreen()))),
+            _ActionTile('Reports', Icons.insights_outlined, PennyPalTheme.navy, () => Navigator.of(context).push(pennyPalRoute(const ReportsScreen()))),
+            _ActionTile('Ask PennyPal', Icons.auto_awesome, PennyPalTheme.navy, () => Navigator.of(context).push(pennyPalRoute(const AssistantScreen()))),
+            _ActionTile('Feedback', Icons.rate_review_outlined, PennyPalTheme.sky, () => Navigator.of(context).push(pennyPalRoute(const FeedbackScreen()))),
+            _ActionTile('Support', Icons.support_agent_outlined, PennyPalTheme.mint, () => Navigator.of(context).push(pennyPalRoute(const SupportScreen()))),
           ]),
           const SizedBox(height: 22),
           SectionTitle('Recent activity', action: 'See all', onTap: () => onNavigate(1)), const SizedBox(height: 10),
@@ -237,7 +267,7 @@ class DashboardView extends StatelessWidget {
 
 class _RecentRow extends StatelessWidget { final dynamic x; const _RecentRow(this.x); @override Widget build(BuildContext context) { final income = x['type'] == 'INCOME'; final amount = num.tryParse('${x['amount']}') ?? 0; return ListTile(contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4), leading: Container(width: 42, height: 42, decoration: BoxDecoration(color: (income ? PennyPalTheme.mint : PennyPalTheme.sky).withValues(alpha: .10), borderRadius: BorderRadius.circular(13)), child: Icon(income ? Icons.south_west_rounded : Icons.north_east_rounded, color: income ? PennyPalTheme.mint : PennyPalTheme.sky)), title: Text('${x['description']}'.isEmpty ? 'Untitled transaction' : '${x['description']}', style: const TextStyle(fontWeight: FontWeight.w800)), subtitle: Text('${x['category_detail']?['name'] ?? 'Miscellaneous'} • ${x['date'] ?? ''}', style: const TextStyle(color: PennyPalTheme.muted, fontSize: 12)), trailing: Text('${income ? '+' : '-'}${money(amount)}', style: TextStyle(fontWeight: FontWeight.w900, color: income ? PennyPalTheme.mint : PennyPalTheme.danger))); } }
 
-class _ActionTile extends StatelessWidget { final String title; final IconData icon; final Color color; final VoidCallback onTap; const _ActionTile(this.title, this.icon, this.color, this.onTap); @override Widget build(BuildContext context) => MotionPress(onTap: onTap, child: AppCard(padding: const EdgeInsets.all(15), child: Row(children: [Container(width: 38, height: 38, decoration: BoxDecoration(color: color.withValues(alpha: .10), borderRadius: BorderRadius.circular(12)), child: Icon(icon, color: color, size: 20)), const SizedBox(width: 10), Expanded(child: Text(title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13)))]))); }
+class _ActionTile extends StatelessWidget { final String title; final IconData icon; final Color color; final VoidCallback onTap; const _ActionTile(this.title, this.icon, this.color, this.onTap); @override Widget build(BuildContext context) => Semantics(button: true, label: title, excludeSemantics: true, child: MotionPress(onTap: onTap, child: AppCard(padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 12), child: Row(children: [Container(width: 38, height: 38, decoration: BoxDecoration(color: color.withValues(alpha: .10), borderRadius: BorderRadius.circular(12)), child: Icon(icon, color: color, size: 20)), const SizedBox(width: 10), Expanded(child: Text(title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13)))])))); }
 
 Future<void> _openQuickAddFromDashboard(
   BuildContext context,
@@ -259,7 +289,7 @@ Future<void> _openQuickAddFromDashboard(
   if (!context.mounted) return;
   final message = result['message'] as String?;
   if (message != null && message.isNotEmpty) {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    afterNextFrame((_) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
       }
@@ -278,10 +308,13 @@ class QuickAddSheet extends StatefulWidget {
 class _QuickAddSheetState extends State<QuickAddSheet> {
   final amount = TextEditingController();
   final desc = TextEditingController();
-  String category = 'Food';
+  late String category = widget.income ? PennyPalService.incomeSources.first : 'Food';
   DateTime date = DateTime.now();
   bool busy = false;
   XFile? receipt;
+  // Validation and save errors are shown inside the sheet. A SnackBar would be
+  // drawn on the page behind the modal sheet, where the user cannot see it.
+  String? error;
 
   @override
   void dispose() {
@@ -293,15 +326,19 @@ class _QuickAddSheetState extends State<QuickAddSheet> {
   Future<void> save() async {
     final value = double.tryParse(amount.text.replaceAll(',', '').trim());
     if (value == null || value <= 0) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Enter a valid amount.')),
-      );
+      setState(() => error = 'Enter an amount greater than zero.');
+      return;
+    }
+    if (value > 1000000000) {
+      setState(() => error = 'That amount looks too large. Please check it.');
       return;
     }
 
     if (busy) return;
-    setState(() => busy = true);
+    setState(() {
+      busy = true;
+      error = null;
+    });
 
     try {
       String? receiptUrl;
@@ -320,9 +357,10 @@ class _QuickAddSheetState extends State<QuickAddSheet> {
       final saved = await PennyPalService.addTransaction({
         'type': widget.income ? 'INCOME' : 'EXPENSE',
         'amount': value,
+        // For income the "category" is its source (Allowance, Scholarship...).
         'category_name': category,
         'description': desc.text.trim(),
-        'date': date.toIso8601String().substring(0, 10),
+        'date': PennyPalService.dateKey(date),
         'payment_mode': 'Cash',
         'receipt_image_url': receiptUrl,
       });
@@ -330,7 +368,9 @@ class _QuickAddSheetState extends State<QuickAddSheet> {
       final alert = saved['budget_alert'] as String?;
       final message = receiptPending
           ? 'Transaction saved. Receipt upload is waiting for internet.'
-          : alert;
+          : saved['pending_sync'] == true
+              ? 'Saved on this device. It will sync when you are back online.'
+              : alert ?? (widget.income ? 'Income saved.' : 'Expense saved.');
 
       if (!mounted) return;
       // The result is handed to the parent before this route is popped. No
@@ -342,11 +382,23 @@ class _QuickAddSheetState extends State<QuickAddSheet> {
       });
     } catch (e) {
       if (!mounted) return;
-      setState(() => busy = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not save transaction: $e')),
-      );
+      setState(() {
+        busy = false;
+        error = 'Could not save this transaction. Please try again.';
+      });
     }
+  }
+
+  Future<void> pickDate() async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: date,
+      firstDate: DateTime(now.year - 5),
+      lastDate: now,
+      helpText: widget.income ? 'Date received' : 'Date spent',
+    );
+    if (picked != null && mounted) setState(() => date = picked);
   }
 
   Future<void> pickReceipt() async {
@@ -360,16 +412,13 @@ class _QuickAddSheetState extends State<QuickAddSheet> {
         setState(() => receipt = picked);
       }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not open the camera: $e')),
-        );
-      }
+      if (mounted) setState(() => error = 'Could not open the camera on this device.');
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final options = widget.income ? PennyPalService.incomeSources : PennyPalService.categories;
     return SafeArea(
       child: Padding(
         padding: EdgeInsets.fromLTRB(
@@ -400,26 +449,34 @@ class _QuickAddSheetState extends State<QuickAddSheet> {
                 enabled: !busy,
                 autofocus: true,
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                onChanged: (_) {
+                  if (error != null) setState(() => error = null);
+                },
                 decoration: const InputDecoration(labelText: 'Amount', prefixText: '₦ '),
               ),
               const SizedBox(height: 12),
-              if (!widget.income)
-                DropdownButtonFormField<String>(
-                  value: category,
-                  items: PennyPalService.categories
-                      .map((x) => DropdownMenuItem(value: x, child: Text(x)))
-                      .toList(),
-                  onChanged: busy ? null : (v) => setState(() => category = v ?? category),
-                  decoration: const InputDecoration(labelText: 'Category'),
-                ),
-              if (!widget.income) const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                initialValue: category,
+                items: options.map((x) => DropdownMenuItem(value: x, child: Text(x))).toList(),
+                onChanged: busy ? null : (v) => setState(() => category = v ?? category),
+                decoration: InputDecoration(labelText: widget.income ? 'Source' : 'Category'),
+              ),
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                onPressed: busy ? null : pickDate,
+                icon: const Icon(Icons.event_outlined),
+                label: Text('Date: ${PennyPalService.dateKey(date)}'),
+              ),
+              const SizedBox(height: 12),
               TextField(
                 controller: desc,
                 enabled: !busy,
                 textCapitalization: TextCapitalization.sentences,
+                maxLength: 120,
                 decoration: InputDecoration(
-                  labelText: widget.income ? 'Source / description' : 'Description',
-                  hintText: widget.income ? 'Allowance, salary...' : 'What did you spend on?',
+                  labelText: 'Description (optional)',
+                  hintText: widget.income ? 'e.g. September allowance' : 'What did you spend on?',
+                  counterText: '',
                 ),
               ),
               if (!widget.income) ...[
@@ -428,6 +485,18 @@ class _QuickAddSheetState extends State<QuickAddSheet> {
                   onPressed: busy ? null : pickReceipt,
                   icon: const Icon(Icons.camera_alt_outlined),
                   label: Text(receipt == null ? 'Attach receipt photo (optional)' : 'Receipt attached'),
+                ),
+              ],
+              if (error != null) ...[
+                const SizedBox(height: 12),
+                Semantics(
+                  liveRegion: true,
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(color: PennyPalTheme.danger.withValues(alpha: .08), borderRadius: BorderRadius.circular(12)),
+                    child: Text(error!, style: const TextStyle(color: PennyPalTheme.danger, fontWeight: FontWeight.w700)),
+                  ),
                 ),
               ],
               const SizedBox(height: 16),

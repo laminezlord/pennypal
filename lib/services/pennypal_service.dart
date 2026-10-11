@@ -7,6 +7,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'core_lessons.dart';
 import 'notification_service.dart';
 import 'offline_queue.dart';
 import 'gemini_service.dart';
@@ -20,6 +21,14 @@ class PennyPalService {
   static const categories = <String>[
     'Food', 'Transport', 'Education', 'Shopping', 'Entertainment', 'Bills', 'Savings', 'Miscellaneous'
   ];
+
+  /// Income is recorded against its source (SRS: "source, amount, date and
+  /// description") instead of an expense category.
+  static const incomeSources = <String>[
+    'Allowance', 'Scholarship', 'Part-time job', 'Internship', 'Gift', 'Other income'
+  ];
+
+  static String dateKey(DateTime d) => _dateKey(d);
 
   static StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
   static bool _initialized = false;
@@ -52,8 +61,19 @@ class PennyPalService {
     final mobile = '${data['mobile_number'] ?? ''}'.trim();
     if (first.isEmpty || last.isEmpty || email.isEmpty || mobile.isEmpty) throw Exception('Please complete all required fields.');
     if (!RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(email)) throw Exception('Enter a valid email address.');
+    if (!RegExp(r'^\+?[0-9]{10,15}$').hasMatch(mobile.replaceAll(RegExp(r'[\s-]'), ''))) {
+      throw Exception('Enter a valid mobile number (10 to 15 digits, optionally starting with +).');
+    }
     if (password.length < 8) throw Exception('Password must contain at least 8 characters.');
-    final credential = await auth.createUserWithEmailAndPassword(email: email, password: password);
+    if (!RegExp(r'[A-Za-z]').hasMatch(password) || !RegExp(r'[0-9]').hasMatch(password)) {
+      throw Exception('Password must include at least one letter and one number.');
+    }
+    final UserCredential credential;
+    try {
+      credential = await auth.createUserWithEmailAndPassword(email: email, password: password);
+    } on FirebaseAuthException catch (e) {
+      throw Exception(friendlyAuthError(e));
+    }
     final user = credential.user!;
     final fullName = '$first $last';
     await user.updateDisplayName(fullName);
@@ -76,7 +96,12 @@ class PennyPalService {
   }
 
   static Future<Map<String, dynamic>> login(String email, String password) async {
-    final credential = await auth.signInWithEmailAndPassword(email: email.trim(), password: password);
+    final UserCredential credential;
+    try {
+      credential = await auth.signInWithEmailAndPassword(email: email.trim(), password: password);
+    } on FirebaseAuthException catch (e) {
+      throw Exception(friendlyAuthError(e));
+    }
     final user = credential.user!;
     try {
       await db.collection('Users').doc(user.uid).set({'LastLogin': FieldValue.serverTimestamp()}, SetOptions(merge: true)).timeout(const Duration(seconds: 3));
@@ -86,6 +111,30 @@ class PennyPalService {
     PennyPalGeminiService.resetConversation();
     unawaited(syncPendingTransactions());
     return {'uid': user.uid, 'user': user};
+  }
+
+  /// Plain-language messages for Firebase Authentication error codes.
+  static String friendlyAuthError(FirebaseAuthException e) {
+    switch (e.code) {
+      case 'email-already-in-use':
+        return 'An account with this email already exists. Sign in instead.';
+      case 'invalid-email':
+        return 'Enter a valid email address.';
+      case 'weak-password':
+        return 'Choose a stronger password.';
+      case 'user-not-found':
+      case 'wrong-password':
+      case 'invalid-credential':
+        return 'Email or password is incorrect.';
+      case 'user-disabled':
+        return 'This account has been disabled. Contact support.';
+      case 'too-many-requests':
+        return 'Too many attempts. Please wait a moment and try again.';
+      case 'network-request-failed':
+        return 'No internet connection. Check your network and try again.';
+      default:
+        return 'Something went wrong. Please try again.';
+    }
   }
 
   static Future<void> logout() async {
@@ -155,7 +204,10 @@ class PennyPalService {
       'payment_mode': x['payment_mode'] ?? 'Cash',
       'pending_sync': true,
     }).toList();
-    final list = <dynamic>[...local, ...cloud];
+    // A write can reach Firestore even though the client timed out and queued
+    // it, so skip queued copies that already exist in the cloud.
+    final cloudIds = cloud.map((x) => '${x['id']}').toSet();
+    final list = <dynamic>[...local.where((x) => !cloudIds.contains('${x['id']}')), ...cloud];
     list.sort((a, b) => '${b['date']}'.compareTo('${a['date']}'));
     return list;
   }
@@ -163,16 +215,19 @@ class PennyPalService {
   static Future<QuerySnapshot<Map<String, dynamic>>?> _safeQuery(
     Query<Map<String, dynamic>> query,
   ) async {
-    try {
-      final cached = await query.get(const GetOptions(source: Source.cache));
-      if (cached.docs.isNotEmpty) return cached;
-      if (!await hasNetwork()) return cached;
-    } catch (_) {
-      if (!await hasNetwork()) return null;
+    // Server first: the local cache may only hold the few documents written in
+    // this session, so returning it whenever it is non-empty hides older
+    // records. The cache is used only when offline or when the server is slow.
+    if (!await hasNetwork()) {
+      try {
+        return await query.get(const GetOptions(source: Source.cache));
+      } catch (_) {
+        return null;
+      }
     }
 
     try {
-      return await query.get().timeout(const Duration(seconds: 2));
+      return await query.get(const GetOptions(source: Source.server)).timeout(const Duration(seconds: 8));
     } catch (_) {
       try {
         return await query.get(const GetOptions(source: Source.cache));
@@ -339,12 +394,21 @@ class PennyPalService {
       }).timeout(const Duration(seconds: 5));
 
   static Future<void> deleteTransaction(String id) async {
-    if (id.startsWith('offline_')) {
-      final items = await OfflineQueue.pendingTransactions();
+    // Every transaction uses its offline_ id as the Firestore document id too
+    // (see addTransaction), so the prefix does not mean "local only". Remove
+    // any queued copy first so it cannot be re-uploaded, then delete the cloud
+    // document as well.
+    final items = await OfflineQueue.pendingTransactions();
+    final wasQueued = items.any((x) => '${x['local_id']}' == id);
+    if (wasQueued) {
       await OfflineQueue.replacePending(items.where((x) => '${x['local_id']}' != id).toList());
-      return;
     }
-    await db.collection('Transactions').doc(id).delete().timeout(const Duration(seconds: 5));
+    try {
+      await db.collection('Transactions').doc(id).delete().timeout(const Duration(seconds: 5));
+    } catch (_) {
+      // A queued entry may never have reached the cloud; that is fine.
+      if (!wasQueued) rethrow;
+    }
   }
 
   static Future<String?> budgetAlert(String category) async {
@@ -488,7 +552,8 @@ class PennyPalService {
       return {...x, 'id': d.id, 'title': x['Title'] ?? '', 'topic': x['Topic'] ?? '', 'body': x['Body'] ?? '', 'difficulty': x['DifficultyLevel'] ?? 'Beginner', 'video_url': x['VideoUrl'] ?? ''};
     }).toList();
     list.sort((a, b) => '${a['title']}'.compareTo('${b['title']}'));
-    return list;
+    // Built-in lessons come first so the Learn section is never empty.
+    return [...coreLessons, ...list];
   }
 
   static Future<Map<String, dynamic>> report() async {
@@ -535,6 +600,18 @@ class PennyPalService {
     Map<String, dynamic> context = emptyDashboard();
     try {
       context = await dashboard();
+      final month = _monthKey(DateTime.now());
+      final monthByCategory = <String, num>{};
+      for (final x in await transactions()) {
+        if (x['type'] != 'EXPENSE' || !'${x['date']}'.startsWith(month)) continue;
+        final category = '${x['category_detail']?['name'] ?? 'Miscellaneous'}';
+        monthByCategory[category] = (monthByCategory[category] ?? 0) + _num(x['amount']);
+      }
+      context['month_by_category'] = monthByCategory;
+      context['goals'] = (await goals())
+          .where((g) => g['status'] == 'active')
+          .map((g) => '${g['goal_name']}: ${g['current_amount']} of ${g['target_amount']} saved (${g['progress']}%)')
+          .toList();
     } catch (_) {
       // Gemini can still answer general educational questions when cloud data is unavailable.
     }

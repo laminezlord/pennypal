@@ -276,7 +276,7 @@ class _AdminScreenState extends State<AdminScreen> {
                         );
                         if (!dialog.mounted) return;
                         Navigator.pop(dialog);
-                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                        afterNextFrame((_) {
                           if (mounted) load();
                         });
                       } catch (e) {
