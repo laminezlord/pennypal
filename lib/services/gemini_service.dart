@@ -11,7 +11,9 @@ class PennyPalGeminiService {
 
   // Keep the provider/model detail private to the AI service. The app UI only
   // presents this feature as the PennyPal Assistant.
-  static const _modelName = 'gemini-3.8-flash';
+  // The lite model answers in about 1-2 s; gemini-3.8-flash took 30-60 s, past
+  // the 20 s timeout, so students only ever saw the fallback answer.
+  static const _modelName = 'gemini-3.5-flash-lite';
 
   static final GenerativeModel _model = FirebaseAI.googleAI().generativeModel(
     model: _modelName,
