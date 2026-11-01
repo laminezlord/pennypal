@@ -42,7 +42,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         const SizedBox(height: 12),
         TextField(controller: phone, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: 'Mobile number', prefixIcon: Icon(Icons.phone_outlined))),
         const SizedBox(height: 12),
-        TextField(controller: pass, obscureText: hide, decoration: InputDecoration(labelText: 'Password', helperText: 'At least 8 characters with a letter and a number', prefixIcon: const Icon(Icons.lock_outline), suffixIcon: IconButton(onPressed: () => setState(() => hide = !hide), icon: Icon(hide ? Icons.visibility_outlined : Icons.visibility_off_outlined)))),
+        TextField(controller: pass, obscureText: hide, decoration: InputDecoration(labelText: 'Password', helperText: 'At least 8 characters with a letter and a number', prefixIcon: const Icon(Icons.lock_outline), suffixIcon: IconButton(tooltip: hide ? 'Show password' : 'Hide password', onPressed: () => setState(() => hide = !hide), icon: Icon(hide ? Icons.visibility_outlined : Icons.visibility_off_outlined)))),
         if (error != null) ...[
           const SizedBox(height: 12),
           Container(width: double.infinity, padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: PennyPalTheme.danger.withValues(alpha: .08), borderRadius: BorderRadius.circular(12)), child: Text(error!, style: const TextStyle(color: PennyPalTheme.danger, fontWeight: FontWeight.w700))),
