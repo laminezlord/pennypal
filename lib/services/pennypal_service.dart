@@ -30,6 +30,11 @@ class PennyPalService {
 
   static String dateKey(DateTime d) => _dateKey(d);
 
+  /// Cloud Storage needs the Firebase Blaze plan, which this project is not
+  /// on, so receipt photos and lesson videos are hidden. Set to true after
+  /// enabling Storage in the Firebase Console.
+  static const storageEnabled = false;
+
   static StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
   static bool _initialized = false;
   static bool _syncing = false;

@@ -479,7 +479,7 @@ class _QuickAddSheetState extends State<QuickAddSheet> {
                   counterText: '',
                 ),
               ),
-              if (!widget.income) ...[
+              if (!widget.income && PennyPalService.storageEnabled) ...[
                 const SizedBox(height: 12),
                 OutlinedButton.icon(
                   onPressed: busy ? null : pickReceipt,

@@ -182,7 +182,7 @@ class _AdminScreenState extends State<AdminScreen> {
                   delay: const Duration(milliseconds: 410),
                   child: const AppCard(
                     child: Text(
-                      'Create concise, beginner-friendly financial lessons and optionally attach a short video. Students can watch the lesson directly inside Money School.',
+                      'Create concise, beginner-friendly financial lessons. Students read them directly inside Money School.',
                       style: TextStyle(color: PennyPalTheme.muted, height: 1.4),
                     ),
                   ),
@@ -230,17 +230,19 @@ class _AdminScreenState extends State<AdminScreen> {
                     textInputAction: TextInputAction.newline,
                     decoration: const InputDecoration(labelText: 'Lesson body', hintText: 'Explain the concept in a clear, student-friendly way.'),
                   ),
-                  const SizedBox(height: 14),
-                  OutlinedButton.icon(
-                    onPressed: uploading
-                        ? null
-                        : () async {
-                            final picked = await ImagePicker().pickVideo(source: ImageSource.gallery);
-                            if (picked != null && dialog.mounted) setDialog(() => video = picked);
-                          },
-                    icon: const Icon(Icons.video_library_outlined),
-                    label: Text(video == null ? 'Attach lesson video (optional)' : 'Video selected: ${video!.name}'),
-                  ),
+                  if (PennyPalService.storageEnabled) ...[
+                    const SizedBox(height: 14),
+                    OutlinedButton.icon(
+                      onPressed: uploading
+                          ? null
+                          : () async {
+                              final picked = await ImagePicker().pickVideo(source: ImageSource.gallery);
+                              if (picked != null && dialog.mounted) setDialog(() => video = picked);
+                            },
+                      icon: const Icon(Icons.video_library_outlined),
+                      label: Text(video == null ? 'Attach lesson video (optional)' : 'Video selected: ${video!.name}'),
+                    ),
+                  ],
                   if (video != null) ...[
                     const SizedBox(height: 6),
                     const Text('A short MP4/MOV lesson works well for mobile and web playback.', style: TextStyle(color: PennyPalTheme.muted, fontSize: 11)),
