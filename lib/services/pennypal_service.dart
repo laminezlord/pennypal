@@ -75,13 +75,19 @@ class PennyPalService {
     }
     final UserCredential credential;
     try {
-      credential = await auth.createUserWithEmailAndPassword(email: email, password: password);
-    } on FirebaseAuthException catch (e) {
-      throw Exception(friendlyAuthError(e));
+      credential = await auth
+          .createUserWithEmailAndPassword(email: email, password: password)
+          .timeout(const Duration(seconds: 25));
+    } catch (e) {
+      throw Exception(authErrorMessage(e));
     }
-    final user = credential.user!;
+    final user = credential.user;
+    if (user == null) throw Exception('Your account could not be created. Please try again.');
     final fullName = '$first $last';
-    await user.updateDisplayName(fullName);
+    try {
+      // Non-critical: the name is also stored in the Users document below.
+      await user.updateDisplayName(fullName).timeout(const Duration(seconds: 5));
+    } catch (_) {}
     try {
       await db.collection('Users').doc(user.uid).set({
         'UserId': user.uid, 'FullName': fullName, 'Email': email, 'MobileNumber': mobile,
@@ -103,11 +109,14 @@ class PennyPalService {
   static Future<Map<String, dynamic>> login(String email, String password) async {
     final UserCredential credential;
     try {
-      credential = await auth.signInWithEmailAndPassword(email: email.trim(), password: password);
-    } on FirebaseAuthException catch (e) {
-      throw Exception(friendlyAuthError(e));
+      credential = await auth
+          .signInWithEmailAndPassword(email: email.trim(), password: password)
+          .timeout(const Duration(seconds: 25));
+    } catch (e) {
+      throw Exception(authErrorMessage(e));
     }
-    final user = credential.user!;
+    final user = credential.user;
+    if (user == null) throw Exception('Sign-in did not complete. Please try again.');
     try {
       await db.collection('Users').doc(user.uid).set({'LastLogin': FieldValue.serverTimestamp()}, SetOptions(merge: true)).timeout(const Duration(seconds: 3));
     } catch (_) {
@@ -116,6 +125,21 @@ class PennyPalService {
     PennyPalGeminiService.resetConversation();
     unawaited(syncPendingTransactions());
     return {'uid': user.uid, 'user': user};
+  }
+
+  /// A readable message for any sign-in or sign-up failure. On the web,
+  /// Firebase can surface errors that are not FirebaseAuthException, and a
+  /// slow network surfaces as a TimeoutException; both used to be swallowed,
+  /// leaving the form silently idle.
+  static String authErrorMessage(Object e) {
+    if (e is FirebaseAuthException) return friendlyAuthError(e);
+    if (e is TimeoutException) return 'The connection is slow. Check your internet and try again.';
+    final text = '$e';
+    const codes = ['email-already-in-use', 'invalid-email', 'weak-password', 'user-not-found', 'wrong-password', 'invalid-credential', 'user-disabled', 'too-many-requests', 'network-request-failed'];
+    for (final code in codes) {
+      if (text.contains(code)) return friendlyAuthError(FirebaseAuthException(code: code));
+    }
+    return 'Something went wrong. Please try again.';
   }
 
   /// Plain-language messages for Firebase Authentication error codes.

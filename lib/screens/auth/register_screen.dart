@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../app.dart';
 import '../../services/pennypal_service.dart';
 import '../../widgets/penny_widgets.dart';
+import '../home/home_screen.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -17,8 +18,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
     setState(() { busy = true; error = null; });
     try {
       await PennyPalService.register({'first_name': first.text, 'last_name': last.text, 'email': email.text, 'mobile_number': phone.text, 'password': pass.text});
-    } on Exception catch (e) {
-      if (mounted) setState(() => error = e.toString().replaceFirst('Exception: ', ''));
+      if (!mounted) return;
+      // Sign-up also signs the user in. This screen sits on top of the app's
+      // auth gate, so go to the dashboard explicitly; before, the account was
+      // created but the user stayed here with no feedback.
+      Navigator.of(context).pushAndRemoveUntil(pennyPalRoute(const HomeScreen()), (_) => false);
+    } catch (e) {
+      if (mounted) setState(() => error = e is Exception ? e.toString().replaceFirst('Exception: ', '') : PennyPalService.authErrorMessage(e));
     } finally { if (mounted) setState(() => busy = false); }
   }
   @override

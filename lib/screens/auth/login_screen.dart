@@ -34,8 +34,9 @@ class _LoginScreenState extends State<LoginScreen> {
         pennyPalRoute(const HomeScreen()),
         (_) => false,
       );
-    } on Exception catch (e) {
-      if (mounted) setState(() => error = _clean(e.toString()));
+    } catch (e) {
+      // Catch everything: an uncaught Error here left the form idle with no message.
+      if (mounted) setState(() => error = e is Exception ? _clean(e.toString()) : PennyPalService.authErrorMessage(e));
     } finally {
       if (mounted) setState(() => busy = false);
     }
